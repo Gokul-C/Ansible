@@ -1,0 +1,103 @@
+---
+- name: Install nexus on server  # 1 play
+  hosts: webservers
+  tasks: 
+    - name: Update apt repo 
+      apt: 
+        update_cache=yes
+        force_apt_get=yes
+        cache_valid_time=3600
+    - name: install java 
+      apt: name=openjdk-8-jre-headless
+    - name: install Net-Tools
+      apt: name=net-tools
+- name: Download nexus and unpack it # 2 play
+  hosts: webservers
+  tasks:
+    - name: checking nexus folder already exist
+      stat:   # is used to checks the file in the path , thats aleady exists or not .
+        path: /opt/nexus
+      register: status_result # storing result in a variable .
+    - name: Download the nexus
+      get_url:  # is used to download the files.
+        url: https://download.sonatype.com/nexus/3/nexus-3.39.0-01-unix.tar.gz
+        dest: /opt/  # will be downloaded in this folder .
+    - name: untar nexus 
+      unarchive:
+          src: /opt/nexus-3.39.0-01-unix.tar.gz
+          dest: /opt/ 
+          remote_src: yes #if not specified . It will search in local host for source .
+      when: not status_result.stat.exists  # "when" is used to execute this task if mentioned variable is not exist in host machine. 
+    - name: Find the nexus folder
+      find:
+        paths: /opt/
+        pattern: "nexus-*" #folder starts with nexus and can be any version
+        file_type: directory # telling it was a directory
+      register: find_result  # storing variable
+    - debug: msg={{find_result}}  # Displaying variable
+    
+    - name: rename nexus folder 
+      shell: mv /opt/nexus-3.39.0-01  /opt/nexus  # can be execute any shell commands
+      when: not status_result.stat.exists  # same applies here as line number "30"
+- name: Create the nexus user & nexus group to own nexus folders # 3 play
+  hosts: webservers
+  tasks: 
+    - name: Create nexus group 
+      group: 
+        name: nexus
+        state: present # its was the desired state
+    - name: create nexus user
+      user:
+        name: nexus
+        group: nexus # adding nexus user into nexus group .
+    - name: make nexus owner of the folder
+      file:
+        path: /opt/nexus
+        state: directory
+        owner: nexus
+        group: nexus
+        recurse: yes # recursively change
+    - name: make nexus owner of the folder
+      file:
+        path: /opt/sonatype-work
+        state: directory
+        owner: nexus
+        group: nexus
+        recurse: yes
+
+- name: start nexus with nexus user  # 4 play
+  hosts: webservers
+  become: true # used to change the user
+  become_user: nexus # change to nexus user
+  tasks: 
+#    - name: set run_as_user nexus
+#      blockinfile: #This module is used insert multiple lines into file , coment out all remaining lines in the file .
+#        path: /opt/nexus/bin/nexus.rc
+#        block: |  # | is used to insert multiple lines in a file. 
+#          run_as_user="nexus" 
+# under the block module we can write as many lines we want .
+    - name: set run_as_user nexus
+      lineinfile: #This module is used to replace line in a file.
+        path: /opt/nexus/bin/nexus.rc 
+        regexp: '^#run_as_user=""'  #this is regular expression - we write existing line in '' , that needs to be replaced .
+        line:  run_as_user="nexus" #this replaces existing line into this line .
+
+    - name: start nexus
+      command: /opt/nexus/bin/nexus start   # run any linux cmd using command module .
+
+- name: verify nexus running 
+  hosts: webservers
+  tasks: 
+    - name: check nexus is running
+      shell: ps aux | grep nexus # shell module is used run any linux command
+      register: app_status  
+    - debug: msg={{app_status.stdout_lines}}
+    - name: wait one minute  
+      pause:  # is used to wait to execute the next task 
+        minutes: 1  # should wait 1 minute
+    - name: check with netstat 
+      shell: netstat -plnt  # show all the process 
+      register: app_status  
+    - debug: msg={{app_status.stdout_lines}} # shows the output .
+
+
