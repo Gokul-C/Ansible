@@ -1,0 +1,78 @@
+---
+- name: Run docker applications
+  hosts: aws
+  become: true
+  become_user: root
+  gather_facts: False #In hosts file we mentioned to use python3 interpreter , but still we need to intsall python3 , so we turnoff "gather facts" for particular play.
+  tasks:
+    - name: Install docker  # Like apt we dont mention separate task for updating repos .
+      vars:  #In hosts file we mentioned to use python3 as interpreter GLOBALLY . But for this specific task we are using python2 .
+        ansible_python_interpreter: /usr/bin/python #Because yum cant run using python3 .
+      yum: 
+       name: docker
+       update_cache: yes
+       state: present
+
+- name: Install Docker-Compose
+  hosts: aws
+  become: yes #This means sudo su
+  tasks: 
+    - name: Install docker-compose
+      get_url: 
+        #url: https://github.com/docker/compose/releases/download/1.22.0/docker-compose-$(uname -s)-$(uname -m) 
+        #This was the downoading url of docker-compose , but change "uname" like below , beacause it cant run on playbooks.
+        url: https://github.com/docker/compose/releases/download/1.22.0/docker-compose-Linux-{{lookup('pipe','uname -m')}} #lookup is a function and linux is instead of "uname -s"
+        dest: /usr/local/bin/docker-compose
+        mode: +x  #This means chmod +x
+        
+- name: start docker
+  hosts: aws
+  become: yes
+  tasks: 
+    - name: start docker deamon
+      systemd:  # amazon linux uses systemd to start the services
+        name: docker
+        state: started
+    - name: Install docker python package
+      pip: # its required to install docker python package to pull images.
+        name: 
+          - docker
+          - docker-compose
+
+
+- name: add ec2-user into docker group
+  hosts: aws
+  become: yes
+  tasks: 
+    - name: add ec2-user to docker group 
+      user: 
+       name: ec2-user
+       group: docker
+       append: yes 
+    
+    - name: Reconnect to server again  # After adding ec2-user into the docker group we need to login again to apply changes.
+      meta: reset_connection  # This "meta" module is used to loguot and login to the server 
+
+- name: start docker container
+  hosts: aws
+  vars_prompt: # Its used to prompt for password , its a very best practice , we donot mention our creds here .
+    - name: docker_password  # variable name to store the passwd
+      prompt: Enter the password for docker login # prompt message
+# we can also use variable file because its difficult to type passwd everytime. for variable file
+# vars_files:
+#    - project-vars  # its wa the file name , variable file located in same folder .
+  tasks:
+    - name: copy docker-compose from control node to hosts node
+      copy:
+        src: /home/gokulc/Downloads/docker-compose.yaml # Docker compose file is already written & stored in control node
+        dest: /home/ec2-user/docker-compose.yaml 
+    - name: Docker login
+      docker_login: # This module is used to login to docker in host machines
+        username: gokulc21 
+        password: "{{docker_password}}" # Calling variable here .
+    - name: Start container form docker compose file
+      docker_compose:  # module used to run docker compose .
+        project_src: /home/ec2-user/  # path of docker compose file
+        state: present  # this means docker-compose up 
+      
+
