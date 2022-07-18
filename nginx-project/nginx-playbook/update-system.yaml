@@ -1,0 +1,7 @@
+---
+- name: update system using package manager
+  hosts: webservers
+  tasks: 
+  - name : updating
+    yum : 
+      update_only: yes

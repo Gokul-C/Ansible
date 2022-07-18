@@ -1,0 +1,44 @@
+---
+- name: Install node and npm
+  hosts: webservers
+  tasks:
+    - name: updating apt repo 
+      apt: 
+        update_cache=yes         
+        force_apt_get=yes        
+        cache_valid_time=3600    
+      apt:
+        pkg:         #by using pkg we can install multiple packages
+          - nodejs
+          - npm
+- name: Create new linux user for running node app
+  hosts: webservers
+  tasks:
+    - name: Creating new user
+      user:
+       name: Gokul
+       group: admin
+       comment: Gokul admin 
+
+- name: Deploy nodejs application
+  hosts: webservers
+  become: true # using this can change the user
+  become_user: Gokul # change to user Gokul
+  tasks:
+    - name: extract nodejs tar file
+      unarchive:
+         src: /home/gokulc/Documents/ansible/simple-nodejs/nodejs-app-1.0.0.tgz  #source_path  in a local machine
+         dest: /home/Gokul    #dest_path in remote server
+    - name: Install dependencies of package.json using npm
+      npm:  # These all cmds can be seen in official documentation
+        path: /home/Gokul/package //path for package.jason
+    - name: start the application
+      command:  # With this , you can execute any linux command.
+        chdir: /home/Gokul/package/app  #cd cmd
+        cmd: node server  #by using cmd we can use any linux command
+      async: 1000 # it avoid connection timeout problem . it runs for 1000 seconds if task is not executing .
+      poll: 0 # After 1000 seconds it will not wait for result , just move to next task .
+    - name: Ensure app is running
+      shell: ps aux | grep node # shell module is used to run any shell cmds
+      register: app_status  # register is used to make variables , Here app_status is a variable name
+    - debug: msg={{app_status}} # debug module is used to print the variable .

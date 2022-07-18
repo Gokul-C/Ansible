@@ -1,0 +1,7 @@
+---
+- name: install docker in server 
+  hosts: aws
+  become: yes
+
+  roles: 
+  - role: geerlingguy.docker
